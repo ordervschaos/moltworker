@@ -102,9 +102,11 @@ fi
 # ONBOARD (only if no config exists yet)
 # ============================================================
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo "No existing config found, running openclaw onboard..."
+    echo "No existing config found"
 
     AUTH_ARGS=""
+    SKIP_ONBOARD=false
+
     if [ -n "$CLOUDFLARE_AI_GATEWAY_API_KEY" ] && [ -n "$CF_AI_GATEWAY_ACCOUNT_ID" ] && [ -n "$CF_AI_GATEWAY_GATEWAY_ID" ]; then
         AUTH_ARGS="--auth-choice cloudflare-ai-gateway-api-key \
             --cloudflare-ai-gateway-account-id $CF_AI_GATEWAY_ACCOUNT_ID \
@@ -113,19 +115,25 @@ if [ ! -f "$CONFIG_FILE" ]; then
     elif [ -n "$ANTHROPIC_API_KEY" ]; then
         AUTH_ARGS="--auth-choice apiKey --anthropic-api-key $ANTHROPIC_API_KEY"
     elif [ -n "$OPENAI_API_KEY" ]; then
-        AUTH_ARGS="--auth-choice openai-api-key --openai-api-key $OPENAI_API_KEY"
+        echo "OpenAI provider detected, will configure via config patching (skipping onboard)"
+        SKIP_ONBOARD=true
     fi
 
-    openclaw onboard --non-interactive --accept-risk \
-        --mode local \
-        $AUTH_ARGS \
-        --gateway-port 18789 \
-        --gateway-bind lan \
-        --skip-channels \
-        --skip-skills \
-        --skip-health
-
-    echo "Onboard completed"
+    if [ "$SKIP_ONBOARD" = false ]; then
+        echo "Running openclaw onboard..."
+        openclaw onboard --non-interactive --accept-risk \
+            --mode local \
+            $AUTH_ARGS \
+            --gateway-port 18789 \
+            --gateway-bind lan \
+            --skip-channels \
+            --skip-skills \
+            --skip-health
+        echo "Onboard completed"
+    else
+        echo "Creating minimal config, will be patched below"
+        echo '{}' > "$CONFIG_FILE"
+    fi
 else
     echo "Using existing config"
 fi
@@ -217,6 +225,30 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
     } else {
         console.warn('CF_AI_GATEWAY_MODEL set but missing required config (account ID, gateway ID, or API key)');
     }
+}
+
+// Direct OpenAI provider configuration
+// If OPENAI_API_KEY is set and no model is configured yet, set up OpenAI provider
+if (process.env.OPENAI_API_KEY && !config.agents?.defaults?.model) {
+    const modelId = 'gpt-4o';
+    const providerName = 'openai';
+
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers[providerName] = {
+        apiKey: process.env.OPENAI_API_KEY,
+        api: 'openai-completions',
+        models: [
+            { id: modelId, name: 'GPT-4o', contextWindow: 128000, maxTokens: 16384 },
+            { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000, maxTokens: 16384 },
+            { id: 'o1', name: 'o1', contextWindow: 200000, maxTokens: 100000 },
+            { id: 'o1-mini', name: 'o1-mini', contextWindow: 128000, maxTokens: 65536 }
+        ],
+    };
+    config.agents = config.agents || {};
+    config.agents.defaults = config.agents.defaults || {};
+    config.agents.defaults.model = { primary: providerName + '/' + modelId };
+    console.log('OpenAI provider configured: default model=' + providerName + '/' + modelId);
 }
 
 // Telegram configuration
