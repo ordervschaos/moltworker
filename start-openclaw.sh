@@ -251,6 +251,16 @@ if (process.env.OPENAI_API_KEY && !config.agents?.defaults?.model) {
     console.log('OpenAI provider configured: default model=' + providerName + '/' + modelId);
 }
 
+// Direct Anthropic model override
+// If ANTHROPIC_API_KEY is set, override the default model to use Sonnet instead of Opus
+if (process.env.ANTHROPIC_API_KEY) {
+    const modelId = 'claude-sonnet-4-5';
+    config.agents = config.agents || {};
+    config.agents.defaults = config.agents.defaults || {};
+    config.agents.defaults.model = { primary: 'anthropic/' + modelId };
+    console.log('Anthropic model override: default model=anthropic/' + modelId);
+}
+
 // Telegram configuration
 // Overwrite entire channel object to drop stale keys from old R2 backups
 // that would fail OpenClaw's strict config validation (see #47)
